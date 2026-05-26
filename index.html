@@ -11,7 +11,7 @@
 </head>
 <body>
 
-  <!-- CABEÇALHO -->
+  <!-- ── CABEÇALHO ─────────────────────────────────────────── -->
   <header class="site-header">
     <div class="header-inner">
       <div class="logo">
@@ -33,62 +33,135 @@
     </div>
   </header>
 
-  <!-- CONTEÚDO PRINCIPAL -->
+  <!-- ── CONTEÚDO PRINCIPAL ────────────────────────────────── -->
   <main class="main-content">
 
-    <!-- FORMULÁRIO DE GERAÇÃO -->
+    <!-- FORMULÁRIO -->
     <section class="card generator-card" aria-labelledby="formTitle">
       <h1 id="formTitle" class="card-title">Gerar novo QR Code</h1>
-      <p class="card-subtitle">Preencha os campos e clique em <strong>Gerar QR Code</strong>.</p>
+      <p class="card-subtitle">Preencha os campos, escolha o layout e clique em <strong>Gerar QR Code</strong>.</p>
 
       <form id="qrForm" novalidate>
 
+        <!-- Título -->
         <div class="field-group">
           <label for="inputTitle" class="field-label">
             Nome / Título <span class="field-required" aria-hidden="true">*</span>
           </label>
-          <input
-            type="text"
-            id="inputTitle"
-            class="field-input"
-            placeholder="Ex.: WhatsApp Suporte"
-            maxlength="80"
-            autocomplete="off"
-            required
-          />
+          <input type="text" id="inputTitle" class="field-input"
+            placeholder="Ex.: WhatsApp Suporte" maxlength="80" autocomplete="off" required />
           <span class="field-hint">Identifique facilmente seu QR Code.</span>
         </div>
 
+        <!-- URL -->
         <div class="field-group">
           <label for="inputUrl" class="field-label">
             URL de destino <span class="field-required" aria-hidden="true">*</span>
           </label>
-          <input
-            type="url"
-            id="inputUrl"
-            class="field-input"
+          <input type="url" id="inputUrl" class="field-input"
             placeholder="https://api.whatsapp.com/send?phone=5547996798784"
-            autocomplete="off"
-            required
-          />
+            autocomplete="off" required />
           <span class="field-hint">Link completo para onde o QR Code vai redirecionar.</span>
         </div>
 
+        <!-- Tamanho -->
         <div class="field-group field-group--inline">
-          <label class="field-label">Tamanho do QR Code</label>
+          <label class="field-label">Tamanho</label>
           <div class="size-options" role="group" aria-label="Tamanho do QR Code">
-            <label class="size-option">
-              <input type="radio" name="qrSize" value="128" /> <span>Pequeno</span>
-            </label>
-            <label class="size-option size-option--selected">
-              <input type="radio" name="qrSize" value="200" checked /> <span>Médio</span>
-            </label>
-            <label class="size-option">
-              <input type="radio" name="qrSize" value="300" /> <span>Grande</span>
-            </label>
+            <label class="size-option"><input type="radio" name="qrSize" value="128" /><span>Pequeno</span></label>
+            <label class="size-option size-option--selected"><input type="radio" name="qrSize" value="200" checked /><span>Médio</span></label>
+            <label class="size-option"><input type="radio" name="qrSize" value="300" /><span>Grande</span></label>
           </div>
         </div>
 
+        <!-- ── SELETOR DE LAYOUT ─────────────────────────── -->
+        <div class="layout-section">
+          <span class="field-label">Layout do card</span>
+
+          <div class="layout-picker" role="group" aria-label="Escolha o layout do card">
+
+            <!-- Layout 1: Portrait Gradient -->
+            <label class="layout-option" title="Portrait — gradiente vertical, texto e QR centralizados">
+              <input type="radio" name="qrLayout" value="portrait" checked />
+              <div class="layout-thumb lt-portrait">
+                <div class="lt-bar"></div>
+                <div class="lt-qr"></div>
+                <div class="lt-line"></div>
+                <div class="lt-line2"></div>
+              </div>
+              <span class="layout-label">Portrait</span>
+            </label>
+
+            <!-- Layout 2: Landscape Gradient -->
+            <label class="layout-option" title="Landscape — texto à esquerda, QR à direita">
+              <input type="radio" name="qrLayout" value="landscape" />
+              <div class="layout-thumb lt-landscape">
+                <div class="lt-left">
+                  <div class="lt-bar"></div>
+                  <div class="lt-line"></div>
+                  <div class="lt-line"></div>
+                </div>
+                <div class="lt-qr"></div>
+              </div>
+              <span class="layout-label">Landscape</span>
+            </label>
+
+            <!-- Layout 3: Bubble -->
+            <label class="layout-option" title="Bubble — badge 'Scan Me!' com QR colorido">
+              <input type="radio" name="qrLayout" value="bubble" />
+              <div class="layout-thumb lt-bubble">
+                <div class="lt-badge">SCAN ME!</div>
+                <div class="lt-qr"></div>
+                <div class="lt-line"></div>
+              </div>
+              <span class="layout-label">Bubble</span>
+            </label>
+
+            <!-- Layout 4: Minimal -->
+            <label class="layout-option" title="Minimal — limpo e profissional com barra de cor">
+              <input type="radio" name="qrLayout" value="minimal" />
+              <div class="layout-thumb lt-minimal">
+                <div class="lt-top-bar"></div>
+                <div class="lt-qr"></div>
+                <div class="lt-bar"></div>
+                <div class="lt-line"></div>
+              </div>
+              <span class="layout-label">Minimal</span>
+            </label>
+
+          </div><!-- /layout-picker -->
+
+          <!-- Picker de gradiente (visível apenas para Portrait e Landscape) -->
+          <div class="gradient-picker-wrap" id="gradientPickerWrap">
+            <span class="field-hint">Cor do gradiente:</span>
+            <div class="gradient-swatches" role="group" aria-label="Escolha o gradiente">
+              <button type="button" class="grad-swatch is-selected" data-grad="1"
+                style="background: linear-gradient(180deg,#b8aee8 0%,#7060c8 100%)"
+                title="Lavanda" aria-label="Lavanda"></button>
+              <button type="button" class="grad-swatch" data-grad="2"
+                style="background: linear-gradient(180deg,#c87888 0%,#8c2858 100%)"
+                title="Malva" aria-label="Malva"></button>
+              <button type="button" class="grad-swatch" data-grad="3"
+                style="background: linear-gradient(180deg,#c030e0 0%,#680080 100%)"
+                title="Roxo" aria-label="Roxo"></button>
+              <button type="button" class="grad-swatch" data-grad="4"
+                style="background: linear-gradient(180deg,#f8e040 0%,#f0a820 100%)"
+                title="Ouro" aria-label="Ouro"></button>
+              <button type="button" class="grad-swatch" data-grad="5"
+                style="background: linear-gradient(180deg,#9080c0 0%,#483878 100%)"
+                title="Ametista" aria-label="Ametista"></button>
+              <button type="button" class="grad-swatch" data-grad="6"
+                style="background: linear-gradient(180deg,#f8b830 0%,#e06010 100%)"
+                title="Âmbar" aria-label="Âmbar"></button>
+              <button type="button" class="grad-swatch" data-grad="7"
+                style="background: linear-gradient(180deg,#5c5498 0%,#2a2258 100%)"
+                title="Marinho" aria-label="Marinho"></button>
+            </div>
+          </div><!-- /gradientPickerWrap -->
+
+        </div><!-- /layout-section -->
+
+        <!-- Botão gerar -->
         <button type="submit" class="btn btn--primary btn--full" id="btnGenerate">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
             <rect x="3" y="3" width="8" height="8" rx="1.5"/>
@@ -97,99 +170,95 @@
           </svg>
           Gerar QR Code
         </button>
+
       </form>
 
-      <!-- PRÉ-VISUALIZAÇÃO -->
+      <!-- ── PRÉ-VISUALIZAÇÃO ─────────────────────────────── -->
       <div class="preview-area" id="previewArea" hidden aria-live="polite">
         <div class="preview-divider"><span>Pré-visualização</span></div>
-        <div class="preview-inner">
-          <div class="qr-canvas-wrap" id="qrPreviewCanvas"></div>
-          <div class="preview-info">
-            <p class="preview-title" id="previewTitle"></p>
-            <a class="preview-url" id="previewUrl" target="_blank" rel="noopener noreferrer"></a>
-            <div class="preview-actions">
-              <button class="btn btn--outline btn--sm" id="btnCopyLink" title="Copiar URL">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                  <rect x="9" y="9" width="13" height="13" rx="2"/>
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-                </svg>
-                Copiar link
-              </button>
-              <button class="btn btn--outline btn--sm" id="btnDownloadPreview" title="Baixar PNG">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
-                  <polyline points="7 10 12 15 17 10"/>
-                  <line x1="12" y1="15" x2="12" y2="3"/>
-                </svg>
-                Baixar PNG
-              </button>
-              <button class="btn btn--success btn--sm" id="btnSave" title="Salvar na lista">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
-                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
-                  <polyline points="17 21 17 13 7 13 7 21"/>
-                  <polyline points="7 3 7 8 15 8"/>
-                </svg>
-                Salvar
-              </button>
-            </div>
+
+        <!-- Canvas oculto: apenas para capturar o dataURL -->
+        <div id="qrHiddenCanvas" aria-hidden="true"></div>
+
+        <!-- Card no layout escolhido -->
+        <div class="preview-card-wrap">
+          <div id="previewCardContainer"></div>
+
+          <div class="preview-actions">
+            <button class="btn btn--outline btn--sm" id="btnCopyLink" title="Copiar URL">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <rect x="9" y="9" width="13" height="13" rx="2"/>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+              </svg>
+              Copiar link
+            </button>
+            <button class="btn btn--outline btn--sm" id="btnDownloadPreview" title="Baixar PNG">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                <polyline points="7 10 12 15 17 10"/>
+                <line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+              Baixar PNG
+            </button>
+            <button class="btn btn--success btn--sm" id="btnSave" title="Salvar na lista">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                <polyline points="17 21 17 13 7 13 7 21"/>
+                <polyline points="7 3 7 8 15 8"/>
+              </svg>
+              Salvar
+            </button>
           </div>
         </div>
-      </div>
-    </section>
+      </div><!-- /previewArea -->
 
-    <!-- LISTAGEM DOS QR CODES SALVOS -->
+    </section><!-- /generator-card -->
+
+    <!-- LISTAGEM -->
     <section class="card list-card" aria-labelledby="listTitle">
       <div class="list-header">
         <h2 id="listTitle" class="card-title">QR Codes salvos</h2>
         <div class="search-wrap">
-          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
           </svg>
-          <input
-            type="search"
-            id="searchInput"
-            class="field-input search-input"
-            placeholder="Buscar por nome ou URL…"
-            aria-label="Buscar QR Codes"
-          />
+          <input type="search" id="searchInput" class="field-input search-input"
+            placeholder="Buscar por nome ou URL…" aria-label="Buscar QR Codes" />
         </div>
       </div>
 
-      <!-- ESTADO VAZIO -->
       <div class="empty-state" id="emptyState" aria-live="polite">
         <svg viewBox="0 0 64 64" fill="none" aria-hidden="true">
           <rect x="8"  y="8"  width="20" height="20" rx="3" stroke="currentColor" stroke-width="2.5"/>
           <rect x="36" y="8"  width="20" height="20" rx="3" stroke="currentColor" stroke-width="2.5"/>
           <rect x="8"  y="36" width="20" height="20" rx="3" stroke="currentColor" stroke-width="2.5"/>
-          <rect x="13" y="13" width="10" height="10" rx="1.5" fill="currentColor" opacity=".25"/>
-          <rect x="41" y="13" width="10" height="10" rx="1.5" fill="currentColor" opacity=".25"/>
-          <rect x="13" y="41" width="10" height="10" rx="1.5" fill="currentColor" opacity=".25"/>
-          <rect x="36" y="36" width="8"  height="8"  rx="1.5" fill="currentColor" opacity=".25"/>
-          <rect x="48" y="36" width="8"  height="8"  rx="1.5" fill="currentColor" opacity=".25"/>
-          <rect x="36" y="48" width="8"  height="8"  rx="1.5" fill="currentColor" opacity=".25"/>
-          <rect x="48" y="48" width="8"  height="8"  rx="1.5" fill="currentColor" opacity=".25"/>
+          <rect x="13" y="13" width="10" height="10" rx="1.5" fill="currentColor" opacity=".2"/>
+          <rect x="41" y="13" width="10" height="10" rx="1.5" fill="currentColor" opacity=".2"/>
+          <rect x="13" y="41" width="10" height="10" rx="1.5" fill="currentColor" opacity=".2"/>
+          <rect x="36" y="36" width="8"  height="8"  rx="1.5" fill="currentColor" opacity=".2"/>
+          <rect x="48" y="36" width="8"  height="8"  rx="1.5" fill="currentColor" opacity=".2"/>
+          <rect x="36" y="48" width="8"  height="8"  rx="1.5" fill="currentColor" opacity=".2"/>
+          <rect x="48" y="48" width="8"  height="8"  rx="1.5" fill="currentColor" opacity=".2"/>
         </svg>
         <p>Nenhum QR Code salvo ainda.</p>
         <p>Gere o primeiro usando o formulário acima!</p>
       </div>
 
-      <!-- GRADE -->
       <div class="qr-grid" id="qrGrid" role="list" aria-label="Lista de QR Codes salvos"></div>
     </section>
 
   </main>
 
-  <!-- RODAPÉ -->
   <footer class="site-footer">
     <p>QR Maker — QR Codes permanentes e gratuitos via
       <a href="https://pages.github.com/" target="_blank" rel="noopener noreferrer">GitHub Pages</a>
     </p>
   </footer>
 
-  <!-- TOAST -->
+  <!-- Toast -->
   <div class="toast-container" id="toastContainer" aria-live="assertive" aria-atomic="true"></div>
 
-  <!-- MODAL DE CONFIRMAÇÃO -->
+  <!-- Modal exclusão -->
   <div class="modal-overlay" id="deleteModal" role="dialog" aria-modal="true" aria-labelledby="deleteModalTitle" hidden>
     <div class="modal">
       <h3 id="deleteModalTitle" class="modal-title">Excluir QR Code?</h3>

@@ -1,596 +1,503 @@
 /**
- * QR MAKER — script.js
+ * QR MAKER — script.js v2
  * ============================================================
- * Lógica completa do gerador de QR Codes permanentes.
- *
- * Fluxo principal:
- *  1. Usuário preenche título + URL e clica "Gerar QR Code".
- *  2. A biblioteca qrcode.js cria um <canvas> com o QR.
- *  3. O QR fica na área de pré-visualização.
- *  4. Ao clicar "Salvar", o dataURL do canvas é guardado no
- *     localStorage junto com os metadados (id, título, url, data).
- *  5. A listagem é renderizada dinamicamente a partir do storage.
- *  6. O botão "Baixar PNG" converte o canvas para download.
- *
- * Dependências externas:
- *  - qrcode.js via CDN (injetada no index.html)
- * ============================================================
- */
+ * Adicionado nesta versão:
+ *  - 4 layouts de card: portrait · landscape · bubble · minimal
+ *  - 7 gradientes da paleta roxa/dourada
+ *  - Picker de gradiente no formulário
+ *  - Geração de QR com colorDark customizado (layout bubble = verde)
+ *  - Preview renderizado no layout real antes de salvar
+ *  - buildQRItem() renderiza cada layout com sua estrutura CSS
+ * ============================================================ */
 
-/* ── SELEÇÃO DE ELEMENTOS DO DOM ──────────────────────────── */
-const form            = document.getElementById('qrForm');
-const inputTitle      = document.getElementById('inputTitle');
-const inputUrl        = document.getElementById('inputUrl');
-const btnGenerate     = document.getElementById('btnGenerate');
-const previewArea     = document.getElementById('previewArea');
-const qrPreviewCanvas = document.getElementById('qrPreviewCanvas');
-const previewTitle    = document.getElementById('previewTitle');
-const previewUrl      = document.getElementById('previewUrl');
-const btnCopyLink     = document.getElementById('btnCopyLink');
-const btnDownloadPrev = document.getElementById('btnDownloadPreview');
-const btnSave         = document.getElementById('btnSave');
-const qrGrid          = document.getElementById('qrGrid');
-const emptyState      = document.getElementById('emptyState');
-const searchInput     = document.getElementById('searchInput');
-const badgeCount      = document.getElementById('badgeCount');
-const toastContainer  = document.getElementById('toastContainer');
-const deleteModal     = document.getElementById('deleteModal');
-const btnCancelDelete = document.getElementById('btnCancelDelete');
-const btnConfirmDelete= document.getElementById('btnConfirmDelete');
+/* ── DOM ────────────────────────────────────────────────────── */
+const form               = document.getElementById('qrForm');
+const inputTitle         = document.getElementById('inputTitle');
+const inputUrl           = document.getElementById('inputUrl');
+const btnGenerate        = document.getElementById('btnGenerate');
+const previewArea        = document.getElementById('previewArea');
+const qrHiddenCanvas    = document.getElementById('qrHiddenCanvas');
+const previewCardContainer = document.getElementById('previewCardContainer');
+const btnCopyLink        = document.getElementById('btnCopyLink');
+const btnDownloadPrev    = document.getElementById('btnDownloadPreview');
+const btnSave            = document.getElementById('btnSave');
+const qrGrid             = document.getElementById('qrGrid');
+const emptyState         = document.getElementById('emptyState');
+const searchInput        = document.getElementById('searchInput');
+const badgeCount         = document.getElementById('badgeCount');
+const toastContainer     = document.getElementById('toastContainer');
+const deleteModal        = document.getElementById('deleteModal');
+const btnCancelDelete    = document.getElementById('btnCancelDelete');
+const btnConfirmDelete   = document.getElementById('btnConfirmDelete');
+const gradientPickerWrap = document.getElementById('gradientPickerWrap');
 
-/* ── CONSTANTES ───────────────────────────────────────────── */
-const STORAGE_KEY    = 'qrmaker_codes_v1'; // chave do localStorage
-const DEFAULT_SIZE   = 200;                // tamanho padrão em px
-
-/* ── ESTADO GLOBAL ────────────────────────────────────────── */
-let currentQRData   = null;   // dados do QR Code em pré-visualização
-let pendingDeleteId = null;   // id do QR Code aguardando confirmação de exclusão
-let searchQuery     = '';     // filtro de busca atual
-
-/* ============================================================
-   UTILITÁRIOS GERAIS
-   ============================================================ */
+/* ── CONSTANTES ─────────────────────────────────────────────── */
+const STORAGE_KEY  = 'qrmaker_codes_v1';
+const DEFAULT_SIZE = 200;
 
 /**
- * Gera um ID único baseado em timestamp + número aleatório.
- * @returns {string}
+ * Mapa dos 7 gradientes da paleta.
+ * css     → valor CSS do gradiente
+ * qrColor → cor dos pixels do QR (ajustada por layout depois)
  */
+const GRADIENTS = {
+  1: { css: 'linear-gradient(180deg,#b8aee8 0%,#7060c8 100%)', label: 'Lavanda',  dir: '180deg' },
+  2: { css: 'linear-gradient(180deg,#c87888 0%,#8c2858 100%)', label: 'Malva',    dir: '180deg' },
+  3: { css: 'linear-gradient(180deg,#c030e0 0%,#680080 100%)', label: 'Roxo',     dir: '180deg' },
+  4: { css: 'linear-gradient(180deg,#f8e040 0%,#f0a820 100%)', label: 'Ouro',     dir: '180deg' },
+  5: { css: 'linear-gradient(180deg,#9080c0 0%,#483878 100%)', label: 'Ametista', dir: '180deg' },
+  6: { css: 'linear-gradient(180deg,#f8b830 0%,#e06010 100%)', label: 'Âmbar',    dir: '180deg' },
+  7: { css: 'linear-gradient(180deg,#5c5498 0%,#2a2258 100%)', label: 'Marinho',  dir: '180deg' },
+};
+
+/* Cor escura do QR por layout */
+const QR_COLOR = {
+  portrait:  '#000000',
+  landscape: '#000000',
+  bubble:    '#3d7a4a', // verde escuro — QR "colorido" no layout bubble
+  minimal:   '#000000',
+};
+
+/* Layouts que mostram o picker de gradiente */
+const GRADIENT_LAYOUTS = new Set(['portrait', 'landscape']);
+
+/* ── ESTADO GLOBAL ──────────────────────────────────────────── */
+let currentQRData   = null;   // metadados do QR em preview
+let pendingDeleteId = null;
+let searchQuery     = '';
+let currentLayout   = 'portrait';
+let currentGradient = 1;      // índice do gradiente ativo (1-7)
+
+/* ── UTILITÁRIOS ────────────────────────────────────────────── */
+
 function generateId() {
-  return `qr_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  return `qr_${Date.now()}_${Math.random().toString(36).slice(2,8)}`;
 }
 
-/**
- * Formata uma data ISO para exibição amigável em pt-BR.
- * @param {string} isoString
- * @returns {string}
- */
-function formatDate(isoString) {
-  return new Date(isoString).toLocaleDateString('pt-BR', {
-    day:   '2-digit',
-    month: '2-digit',
-    year:  'numeric',
-    hour:  '2-digit',
-    minute:'2-digit',
+function formatDate(iso) {
+  return new Date(iso).toLocaleDateString('pt-BR', {
+    day: '2-digit', month: '2-digit', year: 'numeric',
+    hour: '2-digit', minute: '2-digit',
   });
 }
 
-/**
- * Retorna o tamanho selecionado nos radio buttons de tamanho.
- * @returns {number}
- */
 function getSelectedSize() {
-  const checked = document.querySelector('input[name="qrSize"]:checked');
-  return checked ? parseInt(checked.value, 10) : DEFAULT_SIZE;
+  const r = document.querySelector('input[name="qrSize"]:checked');
+  return r ? parseInt(r.value, 10) : DEFAULT_SIZE;
 }
 
-/* ============================================================
-   TOAST DE NOTIFICAÇÃO
-   ============================================================ */
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+    .replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
 
-/**
- * Exibe um toast animado na tela.
- * @param {string} message - Texto da mensagem.
- * @param {'success'|'error'|'info'|'warning'} type - Tipo do toast.
- * @param {number} [duration=3000] - Tempo em ms antes de sumir.
- */
-function showToast(message, type = 'info', duration = 3000) {
-  const icons = {
-    success: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>`,
-    error:   `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`,
-    info:    `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>`,
-    warning: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`,
-  };
+function slugify(str) {
+  return str.toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g,'')
+    .replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'').slice(0,50);
+}
 
+function truncateUrl(url, max = 40) {
+  return url.length > max ? url.slice(0, max) + '…' : url;
+}
+
+/* ── TOAST ──────────────────────────────────────────────────── */
+const TOAST_ICONS = {
+  success: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>',
+  error:   '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>',
+  info:    '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+  warning: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
+};
+
+function showToast(message, type = 'info', duration = 3200) {
   const toast = document.createElement('div');
   toast.className = `toast toast--${type}`;
   toast.setAttribute('role', 'status');
-  toast.innerHTML = `${icons[type] || icons.info}<span>${message}</span>`;
-
+  toast.innerHTML = `${TOAST_ICONS[type] || TOAST_ICONS.info}<span>${message}</span>`;
   toastContainer.appendChild(toast);
-
-  // Remove automaticamente após `duration` ms
-  const timer = setTimeout(() => removeToast(toast), duration);
-
-  // Clique no toast o remove imediatamente
-  toast.addEventListener('click', () => {
-    clearTimeout(timer);
-    removeToast(toast);
-  });
+  const t = setTimeout(() => removeToast(toast), duration);
+  toast.addEventListener('click', () => { clearTimeout(t); removeToast(toast); });
 }
 
-/**
- * Remove um toast com animação de saída.
- * @param {HTMLElement} toast
- */
 function removeToast(toast) {
   if (!toast.parentElement) return;
   toast.classList.add('hiding');
   toast.addEventListener('animationend', () => toast.remove(), { once: true });
 }
 
-/* ============================================================
-   LOCAL STORAGE — persistência dos QR Codes
-   ============================================================ */
-
-/**
- * Lê todos os QR Codes salvos no localStorage.
- * @returns {Array<Object>}
- */
+/* ── LOCAL STORAGE ──────────────────────────────────────────── */
 function loadCodes() {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]');
-  } catch {
-    return [];
-  }
+  try { return JSON.parse(localStorage.getItem(STORAGE_KEY) || '[]'); }
+  catch { return []; }
 }
+function saveCodes(codes) { localStorage.setItem(STORAGE_KEY, JSON.stringify(codes)); }
+function addCode(entry) { const c = loadCodes(); c.unshift(entry); saveCodes(c); }
+function removeCode(id) { saveCodes(loadCodes().filter(c => c.id !== id)); }
+
+/* ── GERAÇÃO DE QR ──────────────────────────────────────────── */
 
 /**
- * Persiste o array de QR Codes no localStorage.
- * @param {Array<Object>} codes
+ * Gera um QR Code dentro de `container` usando qrcode.js.
+ * @param {HTMLElement} container
+ * @param {string} url
+ * @param {number} size
+ * @param {string} colorDark  — cor dos módulos do QR (hex)
+ * @returns {Promise<void>}
  */
-function saveCodes(codes) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(codes));
-}
-
-/**
- * Adiciona um novo QR Code à lista e salva.
- * @param {Object} entry
- */
-function addCode(entry) {
-  const codes = loadCodes();
-  codes.unshift(entry); // mais recente no topo
-  saveCodes(codes);
-}
-
-/**
- * Remove um QR Code pelo id e salva.
- * @param {string} id
- */
-function removeCode(id) {
-  const codes = loadCodes().filter(c => c.id !== id);
-  saveCodes(codes);
-}
-
-/* ============================================================
-   GERAÇÃO DO QR CODE (qrcode.js)
-   ============================================================ */
-
-/**
- * Limpa o container e gera um novo QR Code dentro dele.
- * @param {HTMLElement} container - Elemento onde o QR será inserido.
- * @param {string} url            - URL que o QR Code vai codificar.
- * @param {number} size           - Largura/altura em pixels.
- * @returns {Promise<HTMLCanvasElement>} - Resolve com o canvas gerado.
- */
-function generateQRCode(container, url, size) {
-  return new Promise((resolve) => {
-    // Limpa qualquer QR anterior
+function generateQRCode(container, url, size, colorDark = '#000000') {
+  return new Promise(resolve => {
     container.innerHTML = '';
-
-    /* eslint-disable no-new */
     new QRCode(container, {
-      text:           url,
-      width:          size,
-      height:         size,
-      colorDark:      '#000000',
-      colorLight:     '#ffffff',
-      correctLevel:   QRCode.CorrectLevel.H, // correção alta — melhor para logos
+      text:         url,
+      width:        size,
+      height:       size,
+      colorDark:    colorDark,
+      colorLight:   '#ffffff',
+      correctLevel: QRCode.CorrectLevel.H,
     });
-
-    // qrcode.js é síncrono internamente, mas usa setTimeout(0) internamente;
-    // aguardamos um tick para garantir que o canvas/img foi inserido.
-    setTimeout(() => {
-      const el = container.querySelector('canvas') || container.querySelector('img');
-      resolve(el);
-    }, 100);
+    // qrcode.js usa setTimeout internamente
+    setTimeout(resolve, 120);
   });
 }
 
 /**
- * Extrai o dataURL de um canvas ou img já gerado pelo qrcode.js.
- * @param {HTMLElement} container
- * @returns {string|null}
+ * Extrai o dataURL PNG do canvas ou img gerado pelo qrcode.js.
  */
 function getDataURL(container) {
   const canvas = container.querySelector('canvas');
   if (canvas) return canvas.toDataURL('image/png');
   const img = container.querySelector('img');
-  if (img) return img.src;
-  return null;
+  return img ? img.src : null;
 }
 
-/**
- * Dispara o download de um PNG a partir de um dataURL.
- * @param {string} dataUrl
- * @param {string} filename
- */
 function downloadPNG(dataUrl, filename) {
   const a = document.createElement('a');
-  a.href     = dataUrl;
-  a.download = filename;
-  a.click();
+  a.href = dataUrl; a.download = filename; a.click();
 }
 
-/* ============================================================
-   VALIDAÇÃO DO FORMULÁRIO
-   ============================================================ */
-
-/**
- * Valida os campos do formulário.
- * @returns {{ valid: boolean, title: string, url: string }}
- */
+/* ── VALIDAÇÃO ──────────────────────────────────────────────── */
 function validateForm() {
-  let valid = true;
-
   const title = inputTitle.value.trim();
   const url   = inputUrl.value.trim();
+  let valid = true;
 
-  // Valida título
-  if (!title) {
-    inputTitle.classList.add('is-error');
-    valid = false;
-  } else {
-    inputTitle.classList.remove('is-error');
-  }
+  inputTitle.classList.toggle('is-error', !title);
+  if (!title) valid = false;
 
-  // Valida URL (deve começar com http:// ou https://)
-  if (!url) {
-    inputUrl.classList.add('is-error');
-    valid = false;
-  } else {
-    try {
-      const parsed = new URL(url);
-      if (!['http:', 'https:'].includes(parsed.protocol)) throw new Error();
-      inputUrl.classList.remove('is-error');
-    } catch {
-      inputUrl.classList.add('is-error');
-      valid = false;
-    }
+  let urlOk = false;
+  if (url) {
+    try { const p = new URL(url); urlOk = ['http:','https:'].includes(p.protocol); }
+    catch {}
   }
+  inputUrl.classList.toggle('is-error', !urlOk);
+  if (!urlOk) valid = false;
 
   return { valid, title, url };
 }
 
-/* ============================================================
-   RENDERIZAÇÃO DA LISTAGEM
-   ============================================================ */
+/* ── PICKER DE LAYOUT ───────────────────────────────────────── */
 
-/**
- * Re-renderiza toda a grade de QR Codes salvos,
- * aplicando o filtro de busca se houver.
- */
-function renderGrid() {
-  const codes = loadCodes();
+/** Atualiza a visibilidade do picker de gradiente conforme o layout. */
+function syncGradientPickerVisibility() {
+  gradientPickerWrap.hidden = !GRADIENT_LAYOUTS.has(currentLayout);
+}
 
-  // Aplica filtro de busca (case-insensitive)
-  const filtered = searchQuery
-    ? codes.filter(c =>
-        c.title.toLowerCase().includes(searchQuery) ||
-        c.url.toLowerCase().includes(searchQuery)
-      )
-    : codes;
+// Ouve mudanças nos radio de layout
+document.querySelectorAll('input[name="qrLayout"]').forEach(radio => {
+  radio.addEventListener('change', () => {
+    currentLayout = radio.value;
+    syncGradientPickerVisibility();
+  });
+});
 
-  // Atualiza badge
-  badgeCount.textContent = `${codes.length} QR${codes.length !== 1 ? 's' : ''}`;
+// Ouve cliques nos swatches de gradiente
+document.querySelectorAll('.grad-swatch').forEach(btn => {
+  btn.addEventListener('click', () => {
+    currentGradient = parseInt(btn.dataset.grad, 10);
+    document.querySelectorAll('.grad-swatch').forEach(s => s.classList.remove('is-selected'));
+    btn.classList.add('is-selected');
+  });
+});
 
-  // Exibe ou oculta estado vazio
-  emptyState.hidden = filtered.length > 0;
-  qrGrid.hidden     = filtered.length === 0;
+// Ouve radio de tamanho para destacar visualmente
+document.querySelectorAll('input[name="qrSize"]').forEach(r => {
+  r.addEventListener('change', () => {
+    document.querySelectorAll('.size-option').forEach(l => {
+      l.classList.toggle('size-option--selected', l.querySelector('input').checked);
+    });
+  });
+});
 
-  // Limpa grade antes de re-renderizar
-  qrGrid.innerHTML = '';
-
-  filtered.forEach(code => {
-    const item = buildQRItem(code);
-    qrGrid.appendChild(item);
+function resetSizeOptions() {
+  document.querySelectorAll('input[name="qrSize"]').forEach(r => r.checked = r.value === '200');
+  document.querySelectorAll('.size-option').forEach(l => {
+    l.classList.toggle('size-option--selected', l.querySelector('input').checked);
   });
 }
 
+/* ── CONSTRUÇÃO DO CARD DE PREVIEW ─────────────────────────── */
+
 /**
- * Constrói o elemento DOM de um card de QR Code.
- * A miniatura é reconstruída via qrcode.js a partir do dataURL salvo
- * (ou recriada pelo QR para garantir qualidade).
- *
- * @param {Object} code - { id, title, url, dataUrl, size, createdAt }
+ * Monta o card no layout especificado para exibição no preview.
+ * @param {string} layout  — 'portrait' | 'landscape' | 'bubble' | 'minimal'
+ * @param {string} gradientCss  — CSS do gradiente
+ * @param {string} title
+ * @param {string} url
+ * @param {string} dataUrl  — imagem PNG do QR
+ * @param {boolean} isPreview  — reduz o tamanho visual no preview
  * @returns {HTMLElement}
  */
-function buildQRItem(code) {
-  const item = document.createElement('div');
-  item.className = 'qr-item';
-  item.setAttribute('role', 'listitem');
-  item.dataset.id = code.id;
+function buildCard(layout, gradientCss, title, url, dataUrl, isPreview = false) {
+  const card = document.createElement('div');
+  card.className = `qr-item qr-item--${layout}`;
+  if (isPreview) card.style.cssText = 'animation:none;pointer-events:none;max-width:320px;width:100%;';
 
-  // ── Miniatura
-  const thumb = document.createElement('div');
-  thumb.className = 'qr-item__thumb';
+  const thumb = `<div class="qr-item__thumb"><img src="${escapeHtml(dataUrl)}" alt="QR Code de ${escapeHtml(title)}" /></div>`;
+  const urlShort = truncateUrl(url);
+  const scanHint = layout === 'bubble'
+    ? '<div class="qr-item__bubble-badge">SCAN ME!</div>'
+    : `<p class="qr-item__scan-hint">Scan to discover!</p>`;
 
-  // Usa o dataURL salvo como <img> para a miniatura (leve e rápido)
-  if (code.dataUrl) {
-    const img = document.createElement('img');
-    img.src = code.dataUrl;
-    img.alt = `QR Code de ${code.title}`;
-    img.style.cssText = 'width:100%;max-width:120px;height:auto;display:block;';
-    thumb.appendChild(img);
-  } else {
-    // Fallback: gera o QR via biblioteca (caso não tenha dataUrl)
-    const miniWrap = document.createElement('div');
-    miniWrap.style.cssText = 'width:120px;height:120px;';
-    thumb.appendChild(miniWrap);
-    new QRCode(miniWrap, {
-      text:         code.url,
-      width:        120,
-      height:       120,
-      colorDark:    '#000000',
-      colorLight:   '#ffffff',
-      correctLevel: QRCode.CorrectLevel.H,
-    });
+  if (layout === 'portrait') {
+    card.style.background = gradientCss;
+    card.innerHTML = `
+      ${scanHint}
+      ${thumb}
+      <div class="qr-item__info-block">
+        <p class="qr-item__name">${escapeHtml(title)}</p>
+        <span class="qr-item__url-short" title="${escapeHtml(url)}">${escapeHtml(urlShort)}</span>
+      </div>`;
+
+  } else if (layout === 'landscape') {
+    card.style.background = gradientCss.replace('180deg', '135deg');
+    card.innerHTML = `
+      <div class="qr-item__left">
+        ${scanHint}
+        <p class="qr-item__name">${escapeHtml(title)}</p>
+        <span class="qr-item__url-short" title="${escapeHtml(url)}">${escapeHtml(urlShort)}</span>
+        <div class="qr-item__actions"></div>
+      </div>
+      ${thumb}`;
+
+  } else if (layout === 'bubble') {
+    card.innerHTML = `
+      ${scanHint}
+      ${thumb}
+      <p class="qr-item__name">${escapeHtml(title)}</p>
+      <span class="qr-item__url-short" title="${escapeHtml(url)}">${escapeHtml(urlShort)}</span>
+      <div class="qr-item__actions"></div>`;
+
+  } else { // minimal
+    card.innerHTML = `
+      <div class="qr-item__top-bar"></div>
+      <div class="qr-item__body">
+        ${thumb}
+        <div class="qr-item__info">
+          <p class="qr-item__name">${escapeHtml(title)}</p>
+          <span class="qr-item__url-short" title="${escapeHtml(url)}">${escapeHtml(urlShort)}</span>
+        </div>
+      </div>
+      <div class="qr-item__actions"></div>`;
   }
 
-  // ── Informações
-  const info = document.createElement('div');
-  info.className = 'qr-item__info';
-  info.innerHTML = `
-    <p class="qr-item__name" title="${escapeHtml(code.title)}">${escapeHtml(code.title)}</p>
-    <a class="qr-item__url" href="${escapeHtml(code.url)}" target="_blank" rel="noopener noreferrer"
-       title="${escapeHtml(code.url)}">${escapeHtml(code.url)}</a>
-    <p class="qr-item__date">Criado em ${formatDate(code.createdAt)}</p>
-  `;
+  return card;
+}
 
-  // ── Ações
-  const actions = document.createElement('div');
-  actions.className = 'qr-item__actions';
+/* ── RENDERIZAÇÃO DA GRADE ──────────────────────────────────── */
 
-  // Botão copiar link
-  const btnCopy = document.createElement('button');
-  btnCopy.className = 'btn btn--outline btn--sm';
-  btnCopy.title = 'Copiar URL';
-  btnCopy.innerHTML = `
+/**
+ * Constrói o card completo (com botões de ação) para exibição na lista.
+ */
+function buildQRItem(code) {
+  const gradCss = (code.layout && GRADIENT_LAYOUTS.has(code.layout) && code.gradientKey)
+    ? GRADIENTS[code.gradientKey]?.css || GRADIENTS[1].css
+    : '';
+
+  const card = buildCard(code.layout || 'minimal', gradCss, code.title, code.url, code.dataUrl, false);
+  card.setAttribute('role', 'listitem');
+  card.dataset.id = code.id;
+
+  // Botões de ação
+  const btnCopy = mkActionBtn('outline', 'Copiar', `
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <rect x="9" y="9" width="13" height="13" rx="2"/>
       <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
-    </svg>
-    Copiar
-  `;
-  btnCopy.addEventListener('click', () => {
-    copyToClipboard(code.url, 'Link copiado!');
-  });
+    </svg>`);
+  btnCopy.addEventListener('click', () => copyToClipboard(code.url, 'Link copiado!'));
 
-  // Botão baixar PNG
-  const btnDL = document.createElement('button');
-  btnDL.className = 'btn btn--outline btn--sm';
-  btnDL.title = 'Baixar como PNG';
-  btnDL.innerHTML = `
+  const btnDL = mkActionBtn('outline', 'PNG', `
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
       <polyline points="7 10 12 15 17 10"/>
       <line x1="12" y1="15" x2="12" y2="3"/>
-    </svg>
-    PNG
-  `;
+    </svg>`);
   btnDL.addEventListener('click', () => {
-    if (code.dataUrl) {
-      downloadPNG(code.dataUrl, `qr_${slugify(code.title)}.png`);
-      showToast('Download iniciado!', 'success');
-    } else {
-      showToast('Imagem não disponível para download.', 'error');
-    }
+    if (code.dataUrl) { downloadPNG(code.dataUrl, `qr_${slugify(code.title)}.png`); showToast('Download iniciado!','success'); }
+    else showToast('Imagem não disponível.','error');
   });
 
-  // Botão excluir
-  const btnDel = document.createElement('button');
-  btnDel.className = 'btn btn--danger btn--sm';
-  btnDel.title = 'Excluir QR Code';
-  btnDel.innerHTML = `
+  const btnDel = mkActionBtn('danger', 'Excluir', `
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
       <polyline points="3 6 5 6 21 6"/>
       <path d="M19 6l-1 14H6L5 6"/>
-      <path d="M10 11v6M14 11v6"/>
-      <path d="M9 6V4h6v2"/>
-    </svg>
-    Excluir
-  `;
+      <path d="M10 11v6M14 11v6"/><path d="M9 6V4h6v2"/>
+    </svg>`);
   btnDel.addEventListener('click', () => openDeleteModal(code.id));
 
-  actions.append(btnCopy, btnDL, btnDel);
-  item.append(thumb, info, actions);
-  return item;
+  // Injeta botões no container de ações do card
+  const actionsContainer = card.querySelector('.qr-item__actions');
+  if (actionsContainer) actionsContainer.append(btnCopy, btnDL, btnDel);
+
+  // Data de criação — só no minimal (fica no info)
+  if (code.layout === 'minimal') {
+    const dateEl = document.createElement('p');
+    dateEl.className = 'qr-item__date';
+    dateEl.textContent = formatDate(code.createdAt);
+    card.querySelector('.qr-item__info')?.appendChild(dateEl);
+  }
+
+  return card;
 }
 
-/* ============================================================
-   MODAL DE EXCLUSÃO
-   ============================================================ */
+/** Cria um botão de ação padrão para os cards. */
+function mkActionBtn(variant, text, iconHtml) {
+  const b = document.createElement('button');
+  b.className = `btn btn--${variant} btn--sm`;
+  b.innerHTML = `${iconHtml}${text}`;
+  return b;
+}
 
-/**
- * Abre o modal de confirmação de exclusão para o QR Code dado.
- * @param {string} id
- */
+function renderGrid() {
+  const codes = loadCodes();
+  const filtered = searchQuery
+    ? codes.filter(c => c.title.toLowerCase().includes(searchQuery) || c.url.toLowerCase().includes(searchQuery))
+    : codes;
+
+  badgeCount.textContent = `${codes.length} QR${codes.length !== 1 ? 's' : ''}`;
+  emptyState.hidden = filtered.length > 0;
+  qrGrid.hidden     = filtered.length === 0;
+  qrGrid.innerHTML  = '';
+
+  filtered.forEach(code => qrGrid.appendChild(buildQRItem(code)));
+}
+
+/* ── MODAL DE EXCLUSÃO ──────────────────────────────────────── */
 function openDeleteModal(id) {
   pendingDeleteId = id;
   deleteModal.hidden = false;
-  document.body.style.overflow = 'hidden'; // previne scroll do fundo
+  document.body.style.overflow = 'hidden';
   btnConfirmDelete.focus();
 }
-
-/** Fecha o modal de exclusão sem excluir. */
 function closeDeleteModal() {
   pendingDeleteId = null;
   deleteModal.hidden = true;
   document.body.style.overflow = '';
 }
 
-// Confirmar exclusão
 btnConfirmDelete.addEventListener('click', () => {
   if (!pendingDeleteId) return;
-
-  // Anima o card antes de remover
   const item = qrGrid.querySelector(`[data-id="${pendingDeleteId}"]`);
   if (item) {
     item.classList.add('removing');
-    item.addEventListener('animationend', () => {
-      removeCode(pendingDeleteId);
-      renderGrid();
-    }, { once: true });
-  } else {
-    removeCode(pendingDeleteId);
-    renderGrid();
-  }
-
+    item.addEventListener('animationend', () => { removeCode(pendingDeleteId); renderGrid(); }, { once: true });
+  } else { removeCode(pendingDeleteId); renderGrid(); }
   closeDeleteModal();
   showToast('QR Code excluído.', 'info');
 });
-
-// Cancelar exclusão
 btnCancelDelete.addEventListener('click', closeDeleteModal);
+deleteModal.addEventListener('click', e => { if (e.target === deleteModal) closeDeleteModal(); });
+document.addEventListener('keydown', e => { if (e.key === 'Escape' && !deleteModal.hidden) closeDeleteModal(); });
 
-// Fechar modal clicando no overlay
-deleteModal.addEventListener('click', (e) => {
-  if (e.target === deleteModal) closeDeleteModal();
-});
-
-// Fechar modal com Escape
-document.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && !deleteModal.hidden) closeDeleteModal();
-});
-
-/* ============================================================
-   AÇÕES DE PRÉ-VISUALIZAÇÃO
-   ============================================================ */
-
-/**
- * Copia texto para a área de transferência.
- * @param {string} text
- * @param {string} [successMessage]
- */
-function copyToClipboard(text, successMessage = 'Copiado!') {
+/* ── CLIPBOARD ──────────────────────────────────────────────── */
+function copyToClipboard(text, msg = 'Copiado!') {
   if (navigator.clipboard) {
-    navigator.clipboard.writeText(text)
-      .then(() => showToast(successMessage, 'success'))
-      .catch(() => showToast('Não foi possível copiar.', 'error'));
+    navigator.clipboard.writeText(text).then(() => showToast(msg,'success')).catch(() => showToast('Falha ao copiar.','error'));
   } else {
-    // Fallback para browsers antigos
     const ta = document.createElement('textarea');
-    ta.value = text;
-    ta.style.cssText = 'position:fixed;opacity:0;';
-    document.body.appendChild(ta);
-    ta.select();
-    try {
-      document.execCommand('copy');
-      showToast(successMessage, 'success');
-    } catch {
-      showToast('Não foi possível copiar.', 'error');
-    }
+    ta.value = text; ta.style.cssText = 'position:fixed;opacity:0;';
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand('copy'); showToast(msg,'success'); }
+    catch { showToast('Falha ao copiar.','error'); }
     ta.remove();
   }
 }
 
-// Botão "Copiar link" na pré-visualização
-btnCopyLink.addEventListener('click', () => {
-  if (currentQRData) copyToClipboard(currentQRData.url, 'Link copiado!');
-});
+/* ── AÇÕES DO PREVIEW ───────────────────────────────────────── */
+btnCopyLink.addEventListener('click', () => { if (currentQRData) copyToClipboard(currentQRData.url, 'Link copiado!'); });
 
-// Botão "Baixar PNG" na pré-visualização
 btnDownloadPrev.addEventListener('click', () => {
   if (!currentQRData) return;
-  const dataUrl = getDataURL(qrPreviewCanvas);
-  if (dataUrl) {
-    downloadPNG(dataUrl, `qr_${slugify(currentQRData.title)}.png`);
-    showToast('Download iniciado!', 'success');
-  }
+  const dataUrl = getDataURL(qrHiddenCanvas);
+  if (dataUrl) { downloadPNG(dataUrl, `qr_${slugify(currentQRData.title)}.png`); showToast('Download iniciado!','success'); }
 });
 
-// Botão "Salvar" na pré-visualização
 btnSave.addEventListener('click', () => {
   if (!currentQRData) return;
 
   const codes = loadCodes();
-  const alreadySaved = codes.some(c => c.url === currentQRData.url && c.title === currentQRData.title);
-
-  if (alreadySaved) {
-    showToast('Este QR Code já está na lista!', 'warning');
-    return;
+  if (codes.some(c => c.url === currentQRData.url && c.title === currentQRData.title)) {
+    showToast('Este QR Code já está salvo!','warning'); return;
   }
 
-  // Captura o dataURL do canvas para persistência
-  const dataUrl = getDataURL(qrPreviewCanvas);
-  const entry = { ...currentQRData, dataUrl };
-
-  addCode(entry);
+  const dataUrl = getDataURL(qrHiddenCanvas);
+  addCode({ ...currentQRData, dataUrl });
   renderGrid();
   showToast(`"${currentQRData.title}" salvo com sucesso!`, 'success');
 
-  // Reseta o formulário e oculta a pré-visualização
   form.reset();
   previewArea.hidden = true;
+  previewCardContainer.innerHTML = '';
   currentQRData = null;
   resetSizeOptions();
+  currentLayout = 'portrait';
+  currentGradient = 1;
+  document.querySelector('input[name="qrLayout"][value="portrait"]').checked = true;
+  document.querySelectorAll('.grad-swatch').forEach((s,i) => s.classList.toggle('is-selected', i === 0));
+  syncGradientPickerVisibility();
 });
 
-/* ============================================================
-   ENVIO DO FORMULÁRIO — geração do QR Code
-   ============================================================ */
-
-form.addEventListener('submit', async (e) => {
+/* ── ENVIO DO FORMULÁRIO ────────────────────────────────────── */
+form.addEventListener('submit', async e => {
   e.preventDefault();
-
   const { valid, title, url } = validateForm();
-  if (!valid) {
-    showToast('Preencha todos os campos corretamente.', 'error');
-    return;
-  }
+  if (!valid) { showToast('Preencha todos os campos corretamente.','error'); return; }
 
-  // Estado de carregamento
   btnGenerate.disabled = true;
-  btnGenerate.textContent = 'Gerando…';
+  btnGenerate.innerHTML = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><circle cx="12" cy="12" r="10" stroke-dasharray="60" stroke-dashoffset="20"><animateTransform attributeName="transform" type="rotate" dur=".8s" values="0 12 12;360 12 12" repeatCount="indefinite"/></circle></svg> Gerando…`;
 
   try {
-    const size = getSelectedSize();
+    const size      = getSelectedSize();
+    const layout    = document.querySelector('input[name="qrLayout"]:checked')?.value || 'portrait';
+    const gradKey   = currentGradient;
+    const gradCss   = GRADIENT_LAYOUTS.has(layout) ? (GRADIENTS[gradKey]?.css || GRADIENTS[1].css) : '';
+    const colorDark = QR_COLOR[layout] || '#000000';
 
-    // Gera o QR Code no container de pré-visualização
-    await generateQRCode(qrPreviewCanvas, url, size);
+    // Gera QR no canvas oculto (para capturar dataURL)
+    await generateQRCode(qrHiddenCanvas, url, size, colorDark);
+    const dataUrl = getDataURL(qrHiddenCanvas);
 
-    // Atualiza informações de pré-visualização
-    previewTitle.textContent = title;
-    previewUrl.textContent   = url;
-    previewUrl.href          = url;
-
-    // Salva estado atual em memória
+    // Salva estado atual
     currentQRData = {
-      id:        generateId(),
-      title:     title,
-      url:       url,
-      size:      size,
+      id: generateId(), title, url,
+      layout, gradientKey: gradKey, size,
       createdAt: new Date().toISOString(),
     };
+    currentLayout   = layout;
+    currentGradient = gradKey;
 
-    // Exibe área de pré-visualização com animação
+    // Renderiza card de preview no layout real
+    previewCardContainer.innerHTML = '';
+    const previewCard = buildCard(layout, gradCss, title, url, dataUrl, true);
+    previewCardContainer.appendChild(previewCard);
+
     previewArea.hidden = false;
     previewArea.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-
-    showToast('QR Code gerado! Clique em "Salvar" para guardar.', 'success');
+    showToast('QR Code gerado! Clique em "Salvar" para guardar.','success');
 
   } catch (err) {
-    console.error('Erro ao gerar QR Code:', err);
-    showToast('Erro ao gerar QR Code. Tente novamente.', 'error');
+    console.error(err);
+    showToast('Erro ao gerar QR Code. Tente novamente.','error');
   } finally {
     btnGenerate.disabled = false;
     btnGenerate.innerHTML = `
@@ -598,98 +505,21 @@ form.addEventListener('submit', async (e) => {
         <rect x="3" y="3" width="8" height="8" rx="1.5"/>
         <rect x="13" y="3" width="8" height="8" rx="1.5"/>
         <rect x="3" y="13" width="8" height="8" rx="1.5"/>
-      </svg>
-      Gerar QR Code
-    `;
+      </svg> Gerar QR Code`;
   }
 });
 
-/* ============================================================
-   BUSCA / FILTRO
-   ============================================================ */
-
+/* ── BUSCA ──────────────────────────────────────────────────── */
 searchInput.addEventListener('input', () => {
   searchQuery = searchInput.value.trim().toLowerCase();
   renderGrid();
 });
 
-/* ============================================================
-   SINCRONIZAÇÃO DE RADIO BUTTONS DE TAMANHO
-   ============================================================ */
-
-/**
- * Destaca visualmente o radio button de tamanho selecionado.
- */
-function syncSizeOptions() {
-  document.querySelectorAll('.size-option').forEach(label => {
-    const radio = label.querySelector('input[type="radio"]');
-    label.classList.toggle('size-option--selected', radio.checked);
-  });
-}
-
-/** Volta ao estado padrão (Médio) após reset do formulário. */
-function resetSizeOptions() {
-  document.querySelectorAll('input[name="qrSize"]').forEach(r => {
-    r.checked = r.value === '200';
-  });
-  syncSizeOptions();
-}
-
-document.querySelectorAll('input[name="qrSize"]').forEach(radio => {
-  radio.addEventListener('change', syncSizeOptions);
-});
-
-/* ============================================================
-   UTILITÁRIOS DE STRINGS
-   ============================================================ */
-
-/**
- * Escapa caracteres HTML especiais para evitar XSS.
- * @param {string} str
- * @returns {string}
- */
-function escapeHtml(str) {
-  return String(str)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-/**
- * Converte uma string em slug adequado para nome de arquivo.
- * Ex.: "WhatsApp Suporte" → "whatsapp_suporte"
- * @param {string} str
- * @returns {string}
- */
-function slugify(str) {
-  return str
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[̀-ͯ]/g, '')  // remove acentos
-    .replace(/[^a-z0-9]+/g, '_')
-    .replace(/^_|_$/g, '')
-    .slice(0, 50);
-}
-
-/* ============================================================
-   INICIALIZAÇÃO
-   ============================================================ */
-
-/**
- * Ponto de entrada: executado quando o DOM estiver pronto.
- */
+/* ── INICIALIZAÇÃO ──────────────────────────────────────────── */
 function init() {
-  // Carrega e exibe QR Codes já salvos
   renderGrid();
-
-  // Sincroniza visual dos radio buttons
-  syncSizeOptions();
-
-  // Foca no primeiro campo para UX ágil
+  syncGradientPickerVisibility();
   inputTitle.focus();
 }
 
-// Inicializa após o carregamento da página
 document.addEventListener('DOMContentLoaded', init);
