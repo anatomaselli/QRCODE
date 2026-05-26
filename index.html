@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="description" content="Gerador de QR Codes permanentes — simples, rápido e gratuito." />
+  <title>QR Maker — Gerador de QR Codes</title>
+  <link rel="icon" href="favicon.svg" type="image/svg+xml" />
+  <link rel="stylesheet" href="style.css" />
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+</head>
+<body>
+
+  <!-- CABEÇALHO -->
+  <header class="site-header">
+    <div class="header-inner">
+      <div class="logo">
+        <svg class="logo-icon" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <rect x="3"  y="3"  width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="2"/>
+          <rect x="13" y="3"  width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="2"/>
+          <rect x="3"  y="13" width="8" height="8" rx="1.5" stroke="currentColor" stroke-width="2"/>
+          <rect x="5"  y="5"  width="4" height="4" rx="0.5" fill="currentColor"/>
+          <rect x="15" y="5"  width="4" height="4" rx="0.5" fill="currentColor"/>
+          <rect x="5"  y="15" width="4" height="4" rx="0.5" fill="currentColor"/>
+          <rect x="13" y="13" width="3" height="3" rx="0.5" fill="currentColor"/>
+          <rect x="18" y="13" width="3" height="3" rx="0.5" fill="currentColor"/>
+          <rect x="13" y="18" width="3" height="3" rx="0.5" fill="currentColor"/>
+          <rect x="18" y="18" width="3" height="3" rx="0.5" fill="currentColor"/>
+        </svg>
+        <span class="logo-text">QR <strong>Maker</strong></span>
+      </div>
+      <span class="badge-count" id="badgeCount" title="QR Codes salvos">0 QRs</span>
+    </div>
+  </header>
+
+  <!-- CONTEÚDO PRINCIPAL -->
+  <main class="main-content">
+
+    <!-- FORMULÁRIO DE GERAÇÃO -->
+    <section class="card generator-card" aria-labelledby="formTitle">
+      <h1 id="formTitle" class="card-title">Gerar novo QR Code</h1>
+      <p class="card-subtitle">Preencha os campos e clique em <strong>Gerar QR Code</strong>.</p>
+
+      <form id="qrForm" novalidate>
+
+        <div class="field-group">
+          <label for="inputTitle" class="field-label">
+            Nome / Título <span class="field-required" aria-hidden="true">*</span>
+          </label>
+          <input
+            type="text"
+            id="inputTitle"
+            class="field-input"
+            placeholder="Ex.: WhatsApp Suporte"
+            maxlength="80"
+            autocomplete="off"
+            required
+          />
+          <span class="field-hint">Identifique facilmente seu QR Code.</span>
+        </div>
+
+        <div class="field-group">
+          <label for="inputUrl" class="field-label">
+            URL de destino <span class="field-required" aria-hidden="true">*</span>
+          </label>
+          <input
+            type="url"
+            id="inputUrl"
+            class="field-input"
+            placeholder="https://api.whatsapp.com/send?phone=5547996798784"
+            autocomplete="off"
+            required
+          />
+          <span class="field-hint">Link completo para onde o QR Code vai redirecionar.</span>
+        </div>
+
+        <div class="field-group field-group--inline">
+          <label class="field-label">Tamanho do QR Code</label>
+          <div class="size-options" role="group" aria-label="Tamanho do QR Code">
+            <label class="size-option">
+              <input type="radio" name="qrSize" value="128" /> <span>Pequeno</span>
+            </label>
+            <label class="size-option size-option--selected">
+              <input type="radio" name="qrSize" value="200" checked /> <span>Médio</span>
+            </label>
+            <label class="size-option">
+              <input type="radio" name="qrSize" value="300" /> <span>Grande</span>
+            </label>
+          </div>
+        </div>
+
+        <button type="submit" class="btn btn--primary btn--full" id="btnGenerate">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <rect x="3" y="3" width="8" height="8" rx="1.5"/>
+            <rect x="13" y="3" width="8" height="8" rx="1.5"/>
+            <rect x="3" y="13" width="8" height="8" rx="1.5"/>
+          </svg>
+          Gerar QR Code
+        </button>
+      </form>
+
+      <!-- PRÉ-VISUALIZAÇÃO -->
+      <div class="preview-area" id="previewArea" hidden aria-live="polite">
+        <div class="preview-divider"><span>Pré-visualização</span></div>
+        <div class="preview-inner">
+          <div class="qr-canvas-wrap" id="qrPreviewCanvas"></div>
+          <div class="preview-info">
+            <p class="preview-title" id="previewTitle"></p>
+            <a class="preview-url" id="previewUrl" target="_blank" rel="noopener noreferrer"></a>
+            <div class="preview-actions">
+              <button class="btn btn--outline btn--sm" id="btnCopyLink" title="Copiar URL">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <rect x="9" y="9" width="13" height="13" rx="2"/>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+                Copiar link
+              </button>
+              <button class="btn btn--outline btn--sm" id="btnDownloadPreview" title="Baixar PNG">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+                  <polyline points="7 10 12 15 17 10"/>
+                  <line x1="12" y1="15" x2="12" y2="3"/>
+                </svg>
+                Baixar PNG
+              </button>
+              <button class="btn btn--success btn--sm" id="btnSave" title="Salvar na lista">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+                  <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>
+                  <polyline points="17 21 17 13 7 13 7 21"/>
+                  <polyline points="7 3 7 8 15 8"/>
+                </svg>
+                Salvar
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- LISTAGEM DOS QR CODES SALVOS -->
+    <section class="card list-card" aria-labelledby="listTitle">
+      <div class="list-header">
+        <h2 id="listTitle" class="card-title">QR Codes salvos</h2>
+        <div class="search-wrap">
+          <svg class="search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+            <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+          </svg>
+          <input
+            type="search"
+            id="searchInput"
+            class="field-input search-input"
+            placeholder="Buscar por nome ou URL…"
+            aria-label="Buscar QR Codes"
+          />
+        </div>
+      </div>
+
+      <!-- ESTADO VAZIO -->
+      <div class="empty-state" id="emptyState" aria-live="polite">
+        <svg viewBox="0 0 64 64" fill="none" aria-hidden="true">
+          <rect x="8"  y="8"  width="20" height="20" rx="3" stroke="currentColor" stroke-width="2.5"/>
+          <rect x="36" y="8"  width="20" height="20" rx="3" stroke="currentColor" stroke-width="2.5"/>
+          <rect x="8"  y="36" width="20" height="20" rx="3" stroke="currentColor" stroke-width="2.5"/>
+          <rect x="13" y="13" width="10" height="10" rx="1.5" fill="currentColor" opacity=".25"/>
+          <rect x="41" y="13" width="10" height="10" rx="1.5" fill="currentColor" opacity=".25"/>
+          <rect x="13" y="41" width="10" height="10" rx="1.5" fill="currentColor" opacity=".25"/>
+          <rect x="36" y="36" width="8"  height="8"  rx="1.5" fill="currentColor" opacity=".25"/>
+          <rect x="48" y="36" width="8"  height="8"  rx="1.5" fill="currentColor" opacity=".25"/>
+          <rect x="36" y="48" width="8"  height="8"  rx="1.5" fill="currentColor" opacity=".25"/>
+          <rect x="48" y="48" width="8"  height="8"  rx="1.5" fill="currentColor" opacity=".25"/>
+        </svg>
+        <p>Nenhum QR Code salvo ainda.</p>
+        <p>Gere o primeiro usando o formulário acima!</p>
+      </div>
+
+      <!-- GRADE -->
+      <div class="qr-grid" id="qrGrid" role="list" aria-label="Lista de QR Codes salvos"></div>
+    </section>
+
+  </main>
+
+  <!-- RODAPÉ -->
+  <footer class="site-footer">
+    <p>QR Maker — QR Codes permanentes e gratuitos via
+      <a href="https://pages.github.com/" target="_blank" rel="noopener noreferrer">GitHub Pages</a>
+    </p>
+  </footer>
+
+  <!-- TOAST -->
+  <div class="toast-container" id="toastContainer" aria-live="assertive" aria-atomic="true"></div>
+
+  <!-- MODAL DE CONFIRMAÇÃO -->
+  <div class="modal-overlay" id="deleteModal" role="dialog" aria-modal="true" aria-labelledby="deleteModalTitle" hidden>
+    <div class="modal">
+      <h3 id="deleteModalTitle" class="modal-title">Excluir QR Code?</h3>
+      <p class="modal-body">Esta ação não pode ser desfeita.</p>
+      <div class="modal-actions">
+        <button class="btn btn--outline" id="btnCancelDelete">Cancelar</button>
+        <button class="btn btn--danger"  id="btnConfirmDelete">Excluir</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>
