@@ -1,6 +1,8 @@
 /**
  * QR MAKER — script.js v2
  * 4 layouts · 7 gradientes · preview em tempo real · localStorage
+ * O botão PNG renderiza o card COMPLETO (layout + gradiente + QR)
+ * usando Canvas 2D API — não apenas a imagem crua do QR Code.
  */
 
 /* ── DOM ──────────────────────────────────────────────────── */
@@ -63,6 +65,262 @@ const getSize     = () => { const r=document.querySelector('input[name="qrSize"]
 const truncateUrl = (url,max=38) => url.length>max?url.slice(0,max)+'…':url;
 const escapeHtml  = str => String(str).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
 const slugify     = str => str.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g,'').replace(/[^a-z0-9]+/g,'_').replace(/^_|_$/g,'').slice(0,50);
+
+/* ── RENDERIZAÇÃO DO CARD EM CANVAS (para download PNG) ────── */
+
+/**
+ * Extrai os dois hex-colors de um CSS gradient string.
+ * Ex: "linear-gradient(180deg,#b8aee8 0%,#7060c8 100%)"
+ *     → ['#b8aee8','#7060c8']
+ */
+function parseGradientColors(css) {
+  const m = (css || '').match(/#[0-9a-fA-F]{3,8}/g);
+  return m && m.length >= 2 ? [m[0], m[1]] : ['#7a10be', '#2a2258'];
+}
+
+/** Carrega uma imagem a partir de um dataURL e resolve com o HTMLImageElement. */
+function loadImage(src) {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload  = () => resolve(img);
+    img.onerror = reject;
+    img.src = src;
+  });
+}
+
+/**
+ * Desenha um retângulo com bordas arredondadas no canvas.
+ */
+function drawRoundRect(ctx, x, y, w, h, r) {
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.lineTo(x + w - r, y);
+  ctx.arcTo(x + w, y,     x + w, y + r,     r);
+  ctx.lineTo(x + w, y + h - r);
+  ctx.arcTo(x + w, y + h, x + w - r, y + h, r);
+  ctx.lineTo(x + r, y + h);
+  ctx.arcTo(x,     y + h, x,     y + h - r, r);
+  ctx.lineTo(x,    y + r);
+  ctx.arcTo(x,     y,     x + r, y,          r);
+  ctx.closePath();
+}
+
+/**
+ * Renderiza o card completo em um <canvas> e retorna o elemento.
+ * @param {Object} code  – { layout, gradientKey, title, url, dataUrl, createdAt }
+ * @param {string} qrDataUrl – opcional: dataUrl alternativo do QR (para preview não salvo)
+ * @returns {Promise<HTMLCanvasElement>}
+ */
+async function renderCardToCanvas(code, qrDataUrl) {
+  const layout   = code.layout || 'minimal';
+  const gradCss  = GRADIENT_LAYOUTS.has(layout)
+    ? (GRADIENTS[code.gradientKey]?.css || GRADIENTS[1].css)
+    : '';
+  const colors   = parseGradientColors(gradCss);
+  const qrImg    = await loadImage(qrDataUrl || code.dataUrl);
+
+  const canvas = document.createElement('canvas');
+  const ctx    = canvas.getContext('2d');
+  const dpr    = 2; // resolução 2× para qualidade alta
+
+  /* Helper: aplica escala e retorna [W, H] em pontos lógicos */
+  function setup(W, H) {
+    canvas.width  = W * dpr;
+    canvas.height = H * dpr;
+    ctx.scale(dpr, dpr);
+    return [W, H];
+  }
+
+  /* Helper: cria gradiente linear */
+  function makeGrad(x0, y0, x1, y1) {
+    const g = ctx.createLinearGradient(x0, y0, x1, y1);
+    g.addColorStop(0, colors[0]);
+    g.addColorStop(1, colors[1]);
+    return g;
+  }
+
+  /* Helper: shadow leve */
+  function shadow(blur = 10) { ctx.shadowColor = 'rgba(0,0,0,.18)'; ctx.shadowBlur = blur; }
+  function noShadow()         { ctx.shadowColor = 'transparent'; ctx.shadowBlur = 0; }
+
+  /* Helper: draw white QR container + QR image */
+  function drawQRBox(x, y, size) {
+    const pad = 10, r = 12;
+    ctx.fillStyle = '#ffffff';
+    shadow(12);
+    drawRoundRect(ctx, x - pad, y - pad, size + pad*2, size + pad*2, r);
+    ctx.fill();
+    noShadow();
+    ctx.drawImage(qrImg, x, y, size, size);
+  }
+
+  /* ── PORTRAIT ─────────────────────────────────────────────── */
+  if (layout === 'portrait') {
+    const [W, H] = setup(300, 460);
+
+    // Fundo com gradiente
+    drawRoundRect(ctx, 0, 0, W, H, 20);
+    ctx.fillStyle = makeGrad(0, 0, 0, H);
+    ctx.fill();
+
+    // "SCAN TO DISCOVER!"
+    ctx.fillStyle  = 'rgba(255,255,255,.88)';
+    ctx.font       = 'bold 12px sans-serif';
+    ctx.textAlign  = 'center';
+    ctx.fillText('SCAN TO DISCOVER!', W / 2, 46);
+
+    // QR
+    const qrS = 180, qrX = (W - qrS) / 2, qrY = 62;
+    drawQRBox(qrX, qrY, qrS);
+
+    // Título
+    ctx.fillStyle = '#ffffff';
+    ctx.font      = 'bold 18px sans-serif';
+    ctx.fillText(code.title.slice(0, 28), W / 2, qrY + qrS + 44);
+
+    // URL
+    ctx.fillStyle = 'rgba(255,255,255,.65)';
+    ctx.font      = '11px monospace';
+    ctx.fillText(truncateUrl(code.url, 34), W / 2, qrY + qrS + 66);
+
+  /* ── LANDSCAPE ────────────────────────────────────────────── */
+  } else if (layout === 'landscape') {
+    const [W, H] = setup(520, 240);
+
+    drawRoundRect(ctx, 0, 0, W, H, 20);
+    ctx.fillStyle = makeGrad(0, 0, W, H); // diagonal
+    ctx.fill();
+
+    const qrS = 170, qrX = W - qrS - 28, qrY = (H - qrS) / 2;
+    drawQRBox(qrX, qrY, qrS);
+
+    ctx.textAlign  = 'left';
+    const tx = 32;
+
+    ctx.fillStyle = 'rgba(255,255,255,.88)';
+    ctx.font      = 'bold 11px sans-serif';
+    ctx.fillText('SCAN TO DISCOVER!', tx, 52);
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font      = 'bold 22px sans-serif';
+    ctx.fillText(code.title.slice(0, 22), tx, 90);
+
+    ctx.fillStyle = 'rgba(255,255,255,.65)';
+    ctx.font      = '10px monospace';
+    ctx.fillText(truncateUrl(code.url, 38), tx, 114);
+
+  /* ── BUBBLE ───────────────────────────────────────────────── */
+  } else if (layout === 'bubble') {
+    const [W, H] = setup(280, 370);
+
+    // Fundo branco
+    ctx.fillStyle = '#f8f8f8';
+    drawRoundRect(ctx, 0, 0, W, H, 20);
+    ctx.fill();
+
+    // Badge verde
+    const bW = 140, bH = 28, bX = (W - bW) / 2, bY = 22;
+    ctx.fillStyle = '#5a9a6a';
+    drawRoundRect(ctx, bX, bY, bW, bH, 6);
+    ctx.fill();
+
+    // Seta do badge
+    ctx.beginPath();
+    ctx.moveTo(W/2 - 9, bY + bH);
+    ctx.lineTo(W/2 + 9, bY + bH);
+    ctx.lineTo(W/2,     bY + bH + 9);
+    ctx.closePath();
+    ctx.fillStyle = '#5a9a6a';
+    ctx.fill();
+
+    // Texto do badge
+    ctx.fillStyle = '#ffffff';
+    ctx.font      = 'bold 11px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('SCAN ME!', W/2, bY + 19);
+
+    // QR
+    const qrS = 160, qrX = (W - qrS) / 2, qrY = bY + bH + 16;
+    drawQRBox(qrX, qrY, qrS);
+
+    // Título e URL
+    const ty = qrY + qrS + 30;
+    ctx.fillStyle = '#1c1530';
+    ctx.font      = 'bold 16px sans-serif';
+    ctx.fillText(code.title.slice(0, 28), W/2, ty);
+
+    ctx.fillStyle = '#9e94b8';
+    ctx.font      = '10px monospace';
+    ctx.fillText(truncateUrl(code.url, 32), W/2, ty + 22);
+
+  /* ── MINIMAL ──────────────────────────────────────────────── */
+  } else {
+    const [W, H] = setup(400, 160);
+
+    // Fundo branco com bordas arredondadas
+    ctx.fillStyle = '#ffffff';
+    drawRoundRect(ctx, 0, 0, W, H, 16);
+    ctx.fill();
+
+    // Barra gradiente no topo
+    const barGrd = ctx.createLinearGradient(0, 0, W, 0);
+    barGrd.addColorStop(0, '#7a10be');
+    barGrd.addColorStop(1, '#f0a820');
+    ctx.fillStyle = barGrd;
+    // Clipar o topo para respeitar as bordas arredondadas
+    ctx.save();
+    drawRoundRect(ctx, 0, 0, W, H, 16);
+    ctx.clip();
+    ctx.fillRect(0, 0, W, 6);
+    ctx.restore();
+
+    // QR
+    const qrS = 110, qrX = 18, qrY = 18;
+    shadow(6);
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#e0d8f0';
+    ctx.lineWidth = 1;
+    drawRoundRect(ctx, qrX - 4, qrY - 4, qrS + 8, qrS + 8, 8);
+    ctx.fill();
+    ctx.stroke();
+    noShadow();
+    ctx.drawImage(qrImg, qrX, qrY, qrS, qrS);
+
+    // Textos
+    const tx = qrX + qrS + 22;
+    ctx.textAlign  = 'left';
+    ctx.fillStyle  = '#1c1530';
+    ctx.font       = 'bold 17px sans-serif';
+    ctx.fillText(code.title.slice(0, 24), tx, 44);
+
+    ctx.fillStyle = '#9e94b8';
+    ctx.font      = '10px monospace';
+    ctx.fillText(truncateUrl(code.url, 30), tx, 66);
+
+    ctx.fillStyle = '#b0a8d0';
+    ctx.font      = '10px sans-serif';
+    ctx.fillText(formatDate(code.createdAt), tx, 90);
+  }
+
+  return canvas;
+}
+
+/**
+ * Gera o PNG do card completo e dispara o download.
+ * @param {Object} code       – metadados do QR Code salvo
+ * @param {string} [altDataUrl] – dataUrl do QR para preview (antes de salvar)
+ */
+async function downloadCardAsPNG(code, altDataUrl) {
+  try {
+    const canvas  = await renderCardToCanvas(code, altDataUrl);
+    const dataUrl = canvas.toDataURL('image/png');
+    downloadPNG(dataUrl, `qr_${slugify(code.title)}_card.png`);
+    showToast('Download do card iniciado!', 'success');
+  } catch (err) {
+    console.error('Erro ao renderizar card:', err);
+    showToast('Erro ao gerar imagem do card.', 'error');
+  }
+}
 
 /* ── TOAST ────────────────────────────────────────────────── */
 const ICONS = {
@@ -219,9 +477,9 @@ function buildQRItem(code) {
   bCopy.addEventListener('click',()=>copyToClipboard(code.url,'Link copiado!'));
 
   const bDL = mkBtn('outline','PNG',ICON_DL);
-  bDL.addEventListener('click',()=>{
-    if(code.dataUrl){ downloadPNG(code.dataUrl,`qr_${slugify(code.title)}.png`); showToast('Download iniciado!','success'); }
-    else showToast('Imagem não disponível.','error');
+  bDL.addEventListener('click', () => {
+    if (code.dataUrl) downloadCardAsPNG(code);
+    else showToast('Imagem não disponível.', 'error');
   });
 
   const bDel = mkBtn('danger','Excluir',ICON_DEL);
@@ -280,10 +538,10 @@ function copyToClipboard(text, msg='Copiado!') {
 
 /* ── PREVIEW ACTIONS ──────────────────────────────────────── */
 btnCopyLink.addEventListener('click',()=>{ if(currentQRData) copyToClipboard(currentQRData.url,'Link copiado!'); });
-btnDownloadPrev.addEventListener('click',()=>{
-  if(!currentQRData) return;
-  const d=getDataURL(qrHiddenCanvas);
-  if(d){ downloadPNG(d,`qr_${slugify(currentQRData.title)}.png`); showToast('Download iniciado!','success'); }
+btnDownloadPrev.addEventListener('click', () => {
+  if (!currentQRData) return;
+  const qrDataUrl = getDataURL(qrHiddenCanvas);
+  if (qrDataUrl) downloadCardAsPNG(currentQRData, qrDataUrl);
 });
 btnSave.addEventListener('click',()=>{
   if(!currentQRData) return;
